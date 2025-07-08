@@ -34,13 +34,21 @@ def calc_time(seconds: int) -> str:
     return result.strip()
 
 
+def parse_duration(text: str) -> int:
+    parts = text.replace(",", " ").split()
 
-def parse_duration_ua(text: str) -> int:
-    total = 0
-    # знаходимо пари «число + слово»
-    for number, unit in re.findall(r"(\d+)\s*([А-Яа-яІіЇїЄє]+)", text):
-        unit = unit.lower().rstrip(".")          # нормалізуємо регістр і обрізаємо крапку
-        if unit not in UNIT_TO_SECONDS:
-            raise ValueError(f"Невідома одиниця: {unit}")
-        total += int(number) * UNIT_TO_SECONDS[unit]
-    return total
+    if len(parts) != 3:
+        raise ValueError("Очікую ТРИ числа: <днів> <годин> <хвилин>")
+
+    days, hours, minutes = map(int, parts)
+
+    # Валідація
+    if hours < 0 or hours >= 24:
+        raise ValueError("Години мають бути в діапазоні 0‑23")
+    if minutes < 0 or minutes >= 60:
+        raise ValueError("Хвилини мають бути в діапазоні 0‑59")
+    if days < 0:
+        raise ValueError("Дні не можуть бути від’ємні")
+
+    return days * 86_400 + hours * 3_600 + minutes * 60
+
