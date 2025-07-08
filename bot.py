@@ -2,13 +2,15 @@ import asyncio
 import os
 
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import Message
+from aiogram.filters import CommandStart, Command
+from aiogram.types import Message, KeyboardButton
 import logging
 from dotenv import load_dotenv
 
 
 from fetch import fetch_data
 from additional import calc_time
+from keyboard_markup import keyboard
 
 load_dotenv()
 
@@ -23,12 +25,6 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-async def set_commands(bot: Bot):
-    commands = [
-        types.BotCommand(command="start", description="Запустити бота"),
-    ]
-    await bot.set_my_commands(commands)
-
 async def send_periodic_data():
     while True:
         try:
@@ -39,19 +35,18 @@ async def send_periodic_data():
                         f"Час очікування: {calc_time(entry['wait_time'])}, \nЧерга авто: {entry['vehicle_in_active_queues_counts']}"
                         )
                 else :
-                    await bot.send_message(USER_ID, 'Час очікування менше за 46 годин')
+                    await bot.send_message(USER_ID, f'Час очікування менше за {INTERVAL}')
             else:
                 text = "Об'єкт не знайдено!"
             await bot.send_message(USER_ID, text)
         except Exception as e:
             logging.error(f"Помилка під час надсилання: {e}")
-        await asyncio.sleep(20)
+        await asyncio.sleep(10)
 
 
-@dp.message()
+@dp.message(CommandStart())
 async def start_handler(message: Message):
-    if message.text == '/start':
-        await message.reply(f"Бот запущено. Дані будуть надсилатися кожні {INTERVAL} секунд.")
+    await message.reply(f"Бот запущено", reply_markup=keyboard)
 
 async def main():
     asyncio.create_task(send_periodic_data())
