@@ -6,10 +6,13 @@ from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message
+from aiogram.fsm.state import StatesGroup, State
+from aiogram.fsm.context import FSMContext
 
 from fetch import fetch_data
-from additional import calc_time
+from additional import calc_time, parse_duration_ua
 from keyboard_markup import keyboard
+
 
 load_dotenv()
 API_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -19,14 +22,20 @@ USER_ID = int(os.getenv("TELEGRAM_USER_ID"))
 TARGET_ID = 17
 COUNTRY_ID = 167
 
-INTERVAL = 10
-WAIT_THRESHOLD = 0
+INTERVAL = 30
+
+"""К-сть секунд для перевірки"""
+WAIT_THRESHOLD = 118200
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(API_TOKEN)
 dp = Dispatcher()
 
 periodic_task: asyncio.Task | None = None
+
+class Cfg(StatesGroup):
+    waiting_threshold = State()
+
 
 async def send_periodic_data():
     while True:
@@ -41,11 +50,13 @@ async def send_periodic_data():
                         f"Час очікування: {calc_time(entry['wait_time'])}\n"
                         f"Черга авто: {entry['vehicle_in_active_queues_counts']}"
                     )
-                else:
-                    text = (f"Час очікування менше за {WAIT_THRESHOLD // 3600}год")
+                    for i in range(10):
+                        await bot.send_message(USER_ID, text)
+                        await asyncio.sleep(3)
+                        i += 1
             else:
                 text = "Об'єкт не знайдено!"
-            await bot.send_message(USER_ID, text)
+                await bot.send_message(USER_ID, text)
             await asyncio.sleep(INTERVAL)
         except asyncio.CancelledError:
             logging.info("Закінчено виконання завдання.")
@@ -90,6 +101,28 @@ async def stop_checking(message: Message):
         await message.answer("Зупинив перевірку. ")
     else:
         await message.answer("Перевірка вже неактивна.")
+
+@dp.message(F.text == "Час для перевірки")
+async def set_threshold(message: Message, state: FSMContext):
+    if not is_owner(message):
+        return
+    await stop_checking(message)
+    await message.answer("Введіть поріг у форматі «10 днів 3 години 5 хвилин».")
+    await state.set_state(Cfg.waiting_threshold)
+
+@dp.message(Cfg.waiting_threshold)
+async def save_threshold(message: Message, state: FSMContext):
+    global WAIT_THRESHOLD
+    if not is_owner(message):
+        return
+    try:
+        WAIT_THRESHOLD = parse_duration_ua(message.text)
+        await message.answer(f"Новий поріг: {WAIT_THRESHOLD} секунд.")
+        await state.clear()
+        await start_checking(message)
+    except ValueError as err:
+        await message.answer(f"Помилка: {err}\nСпробуйте ще раз.")
+
 
 async def main():
     await dp.start_polling(bot)
