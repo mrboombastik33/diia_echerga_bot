@@ -15,8 +15,8 @@ from keyboard_markup import keyboard
 
 
 load_dotenv()
-API_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-USER_ID = int(os.getenv("TELEGRAM_USER_ID"))
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_USER_ID = int(os.getenv("TELEGRAM_USER_ID"))
 
 """Hardcoded info about certain country"""
 TARGET_ID = 17
@@ -28,7 +28,7 @@ INTERVAL = 30
 WAIT_THRESHOLD = None
 
 logging.basicConfig(level=logging.INFO)
-bot = Bot(API_TOKEN)
+bot = Bot(TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
 
 periodic_task: asyncio.Task | None = None
@@ -51,12 +51,12 @@ async def send_periodic_data():
                         f"Черга авто: {entry['vehicle_in_active_queues_counts']}"
                     )
                     for i in range(10):
-                        await bot.send_message(USER_ID, text)
+                        await bot.send_message(TELEGRAM_USER_ID, text)
                         await asyncio.sleep(3)
                         i += 1
             else:
                 text = "Об'єкт не знайдено!"
-                await bot.send_message(USER_ID, text)
+                await bot.send_message(TELEGRAM_USER_ID, text)
             await asyncio.sleep(INTERVAL)
         except asyncio.CancelledError:
             logging.info("Закінчено виконання завдання.")
@@ -66,7 +66,7 @@ async def send_periodic_data():
 
 
 def is_owner(message: Message) -> bool:
-    return message.from_user and message.from_user.id == USER_ID
+    return message.from_user and message.from_user.id == TELEGRAM_USER_ID
 
 
 @dp.message(CommandStart())
@@ -79,7 +79,7 @@ async def cmd_start(message: Message):
 async def start_checking(message: Message):
     global WAIT_THRESHOLD, periodic_task
     if WAIT_THRESHOLD is None:
-        await bot.send_message(USER_ID, " Час не задано, введіть його через команду. ")
+        await bot.send_message(TELEGRAM_USER_ID, " Час не задано, введіть його через команду. ")
         return
 
     if not is_owner(message):
