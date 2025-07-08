@@ -75,7 +75,7 @@ async def cmd_start(message: Message):
         return
     await message.answer("Бот запущено", reply_markup=keyboard)
 
-@dp.message(F.text == "Почати перевірку")
+@dp.message(F.text == "🟢 Почати перевірку")
 async def start_checking(message: Message):
     global WAIT_THRESHOLD, periodic_task
     if WAIT_THRESHOLD is None:
@@ -92,7 +92,7 @@ async def start_checking(message: Message):
     periodic_task = asyncio.create_task(send_periodic_data())
     await message.answer(f"Запустив перевірку. Дані перевірятимуться кожні {INTERVAL} секунд.")
 
-@dp.message(F.text == "Зупинити перевірку")
+@dp.message(F.text == "🔴 Зупинити перевірку")
 async def stop_checking(message: Message):
     global periodic_task
     if not is_owner(message):
@@ -105,7 +105,7 @@ async def stop_checking(message: Message):
     else:
         await message.answer("Перевірка вже неактивна.")
 
-@dp.message(F.text == "Час для перевірки")
+@dp.message(F.text == "🟡 Час для перевірки")
 async def set_threshold(message: Message, state: FSMContext):
     if not is_owner(message):
         return
