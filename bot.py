@@ -10,7 +10,7 @@ from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
 from fetch import fetch_data
-from additional import calc_time, parse_duration_ua
+from additional import calc_time, parse_duration
 from keyboard_markup import keyboard
 
 
@@ -25,7 +25,7 @@ COUNTRY_ID = 167
 INTERVAL = 30
 
 """К-сть секунд для перевірки"""
-WAIT_THRESHOLD = 118200
+WAIT_THRESHOLD = None
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(API_TOKEN)
@@ -77,7 +77,11 @@ async def cmd_start(message: Message):
 
 @dp.message(F.text == "Почати перевірку")
 async def start_checking(message: Message):
-    global periodic_task
+    global WAIT_THRESHOLD, periodic_task
+    if WAIT_THRESHOLD is None:
+        await bot.send_message(USER_ID, " Час не задано, введіть його через команду. ")
+        return
+
     if not is_owner(message):
         return
 
@@ -86,8 +90,7 @@ async def start_checking(message: Message):
         return
 
     periodic_task = asyncio.create_task(send_periodic_data())
-    await message.answer("Запустив перевірку. Дані приходитимуть кожні "
-                         f"{INTERVAL} секунд.")
+    await message.answer(f"Запустив перевірку. Дані перевірятимуться кожні {INTERVAL} секунд.")
 
 @dp.message(F.text == "Зупинити перевірку")
 async def stop_checking(message: Message):
@@ -116,7 +119,7 @@ async def save_threshold(message: Message, state: FSMContext):
     if not is_owner(message):
         return
     try:
-        WAIT_THRESHOLD = parse_duration_ua(message.text)
+        WAIT_THRESHOLD = parse_duration(message.text)
         await message.answer(f"Новий поріг: {WAIT_THRESHOLD} секунд.")
         await state.clear()
         await start_checking(message)
