@@ -1,7 +1,7 @@
 import asyncio
 import os
 
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, types
 from aiogram.types import Message
 import logging
 from dotenv import load_dotenv
@@ -23,12 +23,18 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
+async def set_commands(bot: Bot):
+    commands = [
+        types.BotCommand(command="start", description="Запустити бота"),
+    ]
+    await bot.set_my_commands(commands)
+
 async def send_periodic_data():
     while True:
         try:
             entry = await fetch_data(country_id=COUNTRY_ID, target_id=TARGET_ID)
             if entry:
-                if entry['wait_time'] > INTERVAL:
+                if entry['wait_time'] > 0:
                     text = (f"Знайдено: \n{entry['title']}, \nЧерга {"не" if not entry['is_paused'] else ''} затримується, \n"
                         f"Час очікування: {calc_time(entry['wait_time'])}, \nЧерга авто: {entry['vehicle_in_active_queues_counts']}"
                         )
@@ -39,7 +45,7 @@ async def send_periodic_data():
             await bot.send_message(USER_ID, text)
         except Exception as e:
             logging.error(f"Помилка під час надсилання: {e}")
-        await asyncio.sleep(10)
+        await asyncio.sleep(20)
 
 
 @dp.message()
