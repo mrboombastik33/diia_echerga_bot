@@ -22,7 +22,7 @@ TELEGRAM_USER_ID = int(os.getenv("TELEGRAM_USER_ID"))
 TARGET_ID = 17
 COUNTRY_ID = 167
 
-INTERVAL = 30
+INTERVAL = 60 * 5
 
 """К-сть секунд для перевірки"""
 WAIT_THRESHOLD = None
@@ -52,7 +52,7 @@ async def send_periodic_data():
                     )
                     for i in range(10):
                         await bot.send_message(TELEGRAM_USER_ID, text)
-                        await asyncio.sleep(3)
+                        await asyncio.sleep(10)
                         i += 1
             else:
                 text = "Об'єкт не знайдено!"
