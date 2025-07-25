@@ -40,6 +40,7 @@ async def send_periodic_data(user_id: int):
         try:
             threshold = await get_user_threshold(user_id)
             entry = await fetch_data(country_id=COUNTRY_ID, target_id=TARGET_ID)
+
             if entry:
                 if entry["wait_time"] > threshold:
                     text = (
@@ -49,21 +50,19 @@ async def send_periodic_data(user_id: int):
                         f"Час очікування: {calc_time(entry['wait_time'])}\n"
                         f"Черга авто: {entry['vehicle_in_active_queues_counts']}"
                     )
-                    for i in range (10):
+                    for _ in range(10):
                         await bot.send_message(user_id, text)
                         await asyncio.sleep(10)
-                        i += 1
-                else:
-                    text = (f"Час очікування менше за {threshold // 3600} год")
             else:
-                text = "Об'єкт не знайдено!"
-            await bot.send_message(user_id, text)
+                await bot.send_message(user_id, "Об'єкт не знайдено!")
             await asyncio.sleep(INTERVAL)
+
         except asyncio.CancelledError:
             logging.info(f"Task for user {user_id} cancelled.")
             break
         except Exception as exc:
             logging.exception("Помилка під час надсилання: %s", exc)
+
 
 
 @dp.message(CommandStart())
