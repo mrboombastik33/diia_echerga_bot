@@ -23,7 +23,7 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TARGET_ID = 17
 COUNTRY_ID = 167
 
-INTERVAL = 60 * 20
+INTERVAL = 60 * 5
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(TELEGRAM_BOT_TOKEN)
