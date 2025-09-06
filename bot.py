@@ -9,14 +9,14 @@ from aiogram.types import Message
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
-from fetch import fetch_data
-from additional import calc_time, parse_duration
+from additional_functionality.fetch import fetch_data
+from additional_functionality.additional import calc_time, parse_duration
 from keyboard_markup import keyboard
 
 from db.db_interaction import (init_db, get_user_thresholds_database, set_user_threshold_database,
                                add_user_if_not_exists_simple, show_user_data)
-from slow_parsing import find_data
-from task_manager import TaskManager
+from additional_functionality.slow_parsing import find_data
+from additional_functionality.task_manager import TaskManager
 
 
 load_dotenv()
