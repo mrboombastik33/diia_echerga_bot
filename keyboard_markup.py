@@ -3,9 +3,10 @@ from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 
 keyboard = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text='🟢 Почати перевірку')],
-        [KeyboardButton(text='🔴 Зупинити перевірку')],
-        [KeyboardButton(text='🟡 Час для перевірки')],
+        [KeyboardButton(text="🟢 Почати перевірку")],
+        [KeyboardButton(text="🔴 Зупинити перевірку")],
+        [KeyboardButton(text="🟡 Вибрати час та КПП для перевірки")],
+        [KeyboardButton(text="🔵 Показати дані про КПП")]
     ],
         resize_keyboard=True
 )
