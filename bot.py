@@ -13,36 +13,55 @@ from fetch import fetch_data
 from additional import calc_time, parse_duration
 from keyboard_markup import keyboard
 
-from db.db_interaction import init_db, get_user_threshold, set_user_threshold, add_user_if_not_exists
+from db.db_interaction import (init_db, get_user_thresholds_database, set_user_threshold_database,
+                               add_user_if_not_exists_simple, show_user_data)
+from slow_parsing import find_data
+from task_manager import TaskManager
 
 
 load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-"""Hardcoded info about certain country"""
-TARGET_ID = 17
-COUNTRY_ID = 167
 
-INTERVAL = 60 * 5
+INTERVAL = 300
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
 
-user_tasks = {}
+task_manager = TaskManager()
 
 class Cfg(StatesGroup):
+    waiting_kpp = State()
     waiting_threshold = State()
 
 
-async def send_periodic_data(user_id: int):
+async def send_periodic_data(user_id: int, interval: int):
     while True:
         try:
-            threshold = await get_user_threshold(user_id)
-            entry = await fetch_data(country_id=COUNTRY_ID, target_id=TARGET_ID)
+            thresholds = await get_user_thresholds_database(user_id)
 
-            if entry:
-                if entry["wait_time"] > threshold:
+            print(f"Перевірка запущена для юзера {user_id}")
+
+            if not thresholds:
+                await bot.send_message(user_id, "⚠️ У вас немає збережених КПП для перевірки")
+                await asyncio.sleep(interval)
+                continue
+
+            for threshold_data in thresholds:
+                kpp_id = threshold_data["kpp_id"]
+                country_id = threshold_data["country_id"]
+                threshold = threshold_data["threshold"]
+
+                await asyncio.sleep(1)
+
+                entry = await fetch_data(country_id=country_id, target_id=kpp_id)
+
+                if not entry:
+                    await bot.send_message(user_id, f"⚠️ КПП {kpp_id} не знайдено")
+                    continue
+
+                if threshold is not None and entry["wait_time"] > threshold:
                     text = (
                         "Знайдено:\n"
                         f"{entry['title']}\n"
@@ -50,70 +69,110 @@ async def send_periodic_data(user_id: int):
                         f"Час очікування: {calc_time(entry['wait_time'])}\n"
                         f"Черга авто: {entry['vehicle_in_active_queues_counts']}"
                     )
-                    for _ in range(10):
+                    for i in range(10):
                         await bot.send_message(user_id, text)
                         await asyncio.sleep(10)
-            else:
-                await bot.send_message(user_id, "Об'єкт не знайдено!")
-            await asyncio.sleep(INTERVAL)
+
+
+            await asyncio.sleep(interval)
 
         except asyncio.CancelledError:
-            logging.info(f"Task for user {user_id} cancelled.")
+            logging.info(f"Таска для юзера {user_id} відмінена.")
             break
         except Exception as exc:
             logging.exception("Помилка під час надсилання: %s", exc)
+            await asyncio.sleep(interval)  # не падаємо, а чекаємо
 
 
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     user_id = message.from_user.id
-    await add_user_if_not_exists(user_id)
+    await add_user_if_not_exists_simple(user_id)
     await message.answer("Бот запущено. Використовуйте кнопки для керування роботою бота", reply_markup=keyboard)
+
 
 @dp.message(F.text == "🟢 Почати перевірку")
 async def start_checking(message: Message):
     user_id = message.from_user.id
-    await add_user_if_not_exists(user_id)
-    task = user_tasks.get(user_id)
-    if task and not task.done():
+    if task_manager.is_active(user_id):
         await message.answer("Перевірка вже запущена")
         return
-    user_tasks[user_id] = asyncio.create_task(send_periodic_data(user_id))
-    await message.answer("Запустив перевірку. Дані приходитимуть кожні "
-                         f"{INTERVAL} секунд.")
+
+    thresholds = await get_user_thresholds_database(user_id)
+    if not thresholds:
+        await message.answer("⚠️ У вас ще немає збережених КПП.")
+        return
+
+    # Запускаємо одну таску, яка перевіряє всі КПП цього юзера
+    task_manager.start_task(
+        user_id,
+        send_periodic_data(user_id, INTERVAL)
+    )
+    await message.answer(f"✅ Запустив перевірку. Дані приходитимуть кожні {INTERVAL} секунд.")
+
+
 
 @dp.message(F.text == "🔴 Зупинити перевірку")
 async def stop_checking(message: Message):
     user_id = message.from_user.id
-    task = user_tasks.get(user_id)
-    if task and not task.done():
-        task.cancel()
-        user_tasks.pop(user_id, None)
-        await message.answer("Зупинив перевірку. ")
+    if task_manager.is_active(user_id):
+        task_manager.stop_tasks(user_id)
+        await message.answer("Перевірку зупинено.")
     else:
-        await message.answer("Перевірка вже неактивна.")
+        await message.answer("ℹ️ Перевірка вже неактивна.")
 
-@dp.message(F.text == "🟡 Час для перевірки")
-async def set_threshold(message: Message, state: FSMContext):
-    user_id = message.from_user.id
-    await add_user_if_not_exists(user_id)
-    await stop_checking(message)
-    await message.answer("Введіть поріг у форматі «10 днів 7 годин 5 хвилин» (10 7 5).")
+
+# Вибір КПП
+@dp.message(F.text == "🟡 Вибрати час та КПП для перевірки")
+async def set_kpp(message: Message, state: FSMContext):
+    await message.answer("Введіть назву пропускного пункту")
+    await state.set_state(Cfg.waiting_kpp)
+
+
+@dp.message(Cfg.waiting_kpp)
+async def save_kpp(message: Message, state: FSMContext):
+    kpp_name = message.text
+    kpp_data = await find_data(kpp_name)
+
+    if not kpp_data:
+        await message.answer("КПП не знайдено. Спробуйте ще раз.")
+        return
+
+    await state.update_data(kpp_id=kpp_data[0], country_id = kpp_data[1])
+    await message.answer("КПП збережено. Тепер введіть час перевірки (наприклад: 10 7 5 - 10 днів 7 годин 5 хвилин)")
     await state.set_state(Cfg.waiting_threshold)
 
+
+# Встановлюємо час
 @dp.message(Cfg.waiting_threshold)
 async def save_threshold(message: Message, state: FSMContext):
     user_id = message.from_user.id
-    await add_user_if_not_exists(user_id)
-    try:
-        wait_threshold = parse_duration(message.text)
-        await set_user_threshold(user_id, wait_threshold)
-        await message.answer(f"Новий поріг: {wait_threshold} секунд.")
-        await state.clear()
+    await add_user_if_not_exists_simple(user_id)
+
+    data = await state.get_data()
+    kpp_id = data["kpp_id"]
+    country_id = data["country_id"]
+    wait_threshold = parse_duration(message.text)
+
+    await set_user_threshold_database(user_id, wait_threshold, kpp_id, country_id)
+
+    if not task_manager.is_active(user_id):
         await start_checking(message)
-    except ValueError as err:
-        await message.answer(f"Помилка: {err}\nСпробуйте ще раз.")
+
+    await state.clear()
+    await message.answer("✅ Поріг збережено.")
+
+
+@dp.message(F.text == "🔵 Показати дані про КПП")
+async def show_data(message : Message):
+    user_id = message.from_user.id
+    kpps = await show_user_data(user_id)
+    text = "Ваші сессії:\n"
+    for data in kpps:
+        kpp = await fetch_data(data["country_id"], data["id"])
+        text += f"\nНазва: {kpp['title']} \nЧас очікування: {calc_time(kpp['wait_time'])}\n"
+    await bot.send_message(user_id, text)
 
 
 async def main():
