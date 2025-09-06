@@ -29,7 +29,8 @@ async def main():
     if result:
         print("Знайдено:", result)
     else:
-        print("Об’єкт із id=17 не знайдено!")
+        print("Об’єкт не знайдено!")
+    print(type(result))
 
 if __name__ == "__main__":
     asyncio.run(main())
