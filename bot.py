@@ -290,8 +290,6 @@ async def main():
         pass
 
     await bot.session.close()
-    from db.db_setup import engine
-    await engine.dispose()
     logging.info("Бот зупинено.")
 
 
