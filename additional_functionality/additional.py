@@ -9,6 +9,9 @@ UNIT_TO_SECONDS = {
 
 
 def calc_time(seconds: int) -> str:
+    if seconds == 0:
+        return "0 хвилин"
+
     time_periods = [60, 3600, 86400]
     result = ''
     time = len(time_periods) - 1
