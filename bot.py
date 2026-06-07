@@ -61,8 +61,8 @@ async def update_status_message(user_id: int, text: str):
     await set_status_message_id(user_id, msg.message_id)
     try:
         await bot.pin_chat_message(user_id, msg.message_id)
-    except TelegramBadRequest:
-        pass
+    except TelegramBadRequest as e:
+        logging.warning("Не вдалося закріпити повідомлення для %s: %s", user_id, e)
 
 
 async def send_periodic_data(user_id: int, interval: int):
