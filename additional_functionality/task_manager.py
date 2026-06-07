@@ -5,8 +5,10 @@ class TaskManager:
         self.user_tasks: dict[int, list[asyncio.Task]] = {}
 
     def start_task(self, user_id: int, coro) -> None:
+        existing = [t for t in self.user_tasks.get(user_id, []) if not t.done()]
+        self.user_tasks[user_id] = existing
         task = asyncio.create_task(coro)
-        self.user_tasks.setdefault(user_id, []).append(task)
+        existing.append(task)
 
     def stop_tasks(self, user_id: int) -> None:
         tasks = self.user_tasks.pop(user_id, [])
