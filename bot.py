@@ -13,7 +13,7 @@ from aiogram.fsm.context import FSMContext
 
 from additional_functionality.fetch import fetch_data
 from additional_functionality.additional import calc_time, parse_duration
-from keyboard_markup import keyboard
+from keyboard_markup import keyboard, cancel_keyboard
 
 from db.db_interaction import (init_db, get_user_thresholds_database, set_user_threshold_database,
                                add_user_if_not_exists_simple, show_user_data,
@@ -161,8 +161,14 @@ async def stop_checking(message: Message):
 # Вибір КПП
 @dp.message(F.text == "🟡 Вибрати час та КПП для перевірки", StateFilter(default_state))
 async def set_kpp(message: Message, state: FSMContext):
-    await message.answer("Введіть назву пропускного пункту")
+    await message.answer("Введіть назву пропускного пункту", reply_markup=cancel_keyboard)
     await state.set_state(Cfg.waiting_kpp)
+
+
+@dp.message(Cfg.waiting_kpp, F.text == "❌ Скасувати")
+async def cancel_kpp_input(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Скасовано.", reply_markup=keyboard)
 
 
 @dp.message(Cfg.waiting_kpp, F.text)
@@ -175,11 +181,17 @@ async def save_kpp(message: Message, state: FSMContext):
         return
 
     await state.update_data(kpp_id=kpp_data[0], country_id = kpp_data[1])
-    await message.answer("КПП збережено. Тепер введіть час перевірки (наприклад: 10 7 5 - 10 днів 7 годин 5 хвилин)")
+    await message.answer("КПП збережено. Тепер введіть час перевірки (наприклад: 10 7 5 - 10 днів 7 годин 5 хвилин)", reply_markup=cancel_keyboard)
     await state.set_state(Cfg.waiting_threshold)
 
 
 # Встановлюємо час
+@dp.message(Cfg.waiting_threshold, F.text == "❌ Скасувати")
+async def cancel_threshold_input(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Скасовано.", reply_markup=keyboard)
+
+
 @dp.message(Cfg.waiting_threshold, F.text)
 async def save_threshold(message: Message, state: FSMContext):
     user_id = message.from_user.id

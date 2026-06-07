@@ -11,3 +11,10 @@ keyboard = ReplyKeyboardMarkup(
     ],
         resize_keyboard=True
 )
+
+cancel_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="❌ Скасувати")]
+    ],
+    resize_keyboard=True
+)
