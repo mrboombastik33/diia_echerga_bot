@@ -39,10 +39,12 @@ class Cfg(StatesGroup):
     waiting_threshold = State()
 
 
-async def send_long_message(user_id: int, text: str):
+async def send_long_message(user_id: int, text: str, reply_markup=None):
     MAX_LEN = 4000
-    for i in range(0, len(text), MAX_LEN):
-        await bot.send_message(user_id, text[i:i+MAX_LEN])
+    chunks = [text[i:i+MAX_LEN] for i in range(0, len(text), MAX_LEN)]
+    for i, chunk in enumerate(chunks):
+        markup = reply_markup if i == len(chunks) - 1 else None
+        await bot.send_message(user_id, chunk, reply_markup=markup)
 
 
 async def update_status_message(user_id: int, text: str):
@@ -130,12 +132,12 @@ async def start_checking(message: Message, state: FSMContext):
     await state.clear()
     user_id = message.from_user.id
     if task_manager.is_active(user_id):
-        await message.answer("Перевірка вже запущена")
+        await message.answer("Перевірка вже запущена", reply_markup=keyboard)
         return
 
     thresholds = await get_user_thresholds_database(user_id)
     if not thresholds:
-        await message.answer("⚠️ У вас ще немає збережених КПП.")
+        await message.answer("⚠️ У вас ще немає збережених КПП.", reply_markup=keyboard)
         return
 
     # Запускаємо одну задачу, яка перевіряє всі КПП цього юзера
@@ -144,7 +146,7 @@ async def start_checking(message: Message, state: FSMContext):
         send_periodic_data(user_id, INTERVAL)
     )
     await update_status_message(user_id, "🟢 Моніторинг активний")
-    await message.answer(f"✅ Запустив перевірку. Дані приходитимуть кожні {INTERVAL} секунд.")
+    await message.answer(f"✅ Запустив перевірку. Дані приходитимуть кожні {INTERVAL} секунд.", reply_markup=keyboard)
 
 
 
@@ -155,9 +157,9 @@ async def stop_checking(message: Message, state: FSMContext):
     if task_manager.is_active(user_id):
         task_manager.stop_tasks(user_id)
         await update_status_message(user_id, "🔴 Моніторинг зупинено")
-        await message.answer("Перевірку зупинено.")
+        await message.answer("Перевірку зупинено.", reply_markup=keyboard)
     else:
-        await message.answer("ℹ️ Перевірка вже неактивна.")
+        await message.answer("ℹ️ Перевірка вже неактивна.", reply_markup=keyboard)
 
 
 # Вибір КПП
@@ -225,7 +227,7 @@ async def save_threshold(message: Message, state: FSMContext):
         await update_status_message(user_id, "🟢 Моніторинг активний")
 
     await state.clear()
-    await message.answer("✅ Поріг збережено.")
+    await message.answer("✅ Поріг збережено.", reply_markup=keyboard)
 
 
 @dp.message(F.text == "🔵 Показати дані про КПП")
@@ -244,7 +246,7 @@ async def show_data(message: Message, state: FSMContext):
         title = kpp.get("title", "Невідомо")
         wait_time = kpp.get("wait_time", 0)
         text += f"\nНазва: {title} \nЧас очікування: {calc_time(wait_time)}\n"
-    await send_long_message(user_id, text)
+    await send_long_message(user_id, text, reply_markup=keyboard)
 
 
 @dp.message(F.text == "⚙️ Мої налаштування КПП")
@@ -263,7 +265,7 @@ async def show_kpp_settings(message: Message, state: FSMContext):
             continue
         title = kpp.get("title", "Невідомо")
         text += f"\nНазва: {title}\nПоріг очікування: {calc_time(data['threshold'])}\n"
-    await send_long_message(user_id, text)
+    await send_long_message(user_id, text, reply_markup=keyboard)
 
 
 async def main():
