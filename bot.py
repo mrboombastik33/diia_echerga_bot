@@ -122,7 +122,6 @@ async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     user_id = message.from_user.id
     await add_user_if_not_exists_simple(user_id)
-    await update_status_message(user_id, "🔴 Моніторинг зупинено")
     await message.answer("Бот запущено. Використовуйте кнопки для керування роботою бота", reply_markup=keyboard)
 
 
