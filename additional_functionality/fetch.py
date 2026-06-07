@@ -1,6 +1,7 @@
 import aiohttp
 import asyncio
 import uuid
+import logging
 
 async def fetch_data(country_id: int = 167, target_id: int = 17) -> dict | None:
     URL = "https://back.echerha.gov.ua/api/v4/workload/1?country_id={}"
@@ -11,18 +12,29 @@ async def fetch_data(country_id: int = 167, target_id: int = 17) -> dict | None:
         "x-user-agent": "UABorder/3.2.2 Web/1.1.0 User/guest",
         "origin": "https://echerha.gov.ua",
         "x-request-id": str(uuid.uuid4()),
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     }
 
-    async with aiohttp.ClientSession() as session:
-        async with session.get(URL.format(country_id), headers=HEADERS, timeout=10) as resp:
-            resp.raise_for_status()
-            data = await resp.json()
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(URL.format(country_id), headers=HEADERS, timeout=10) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    logging.error("fetch_data: API status %s, body: %s", resp.status, body[:200])
+                    return None
+                data = await resp.json()
+                if not isinstance(data, dict):
+                    logging.error("fetch_data: unexpected response type: %s", type(data))
+                    return None
 
-            entry = next(
-                (row for row in data["data"] if row["id"] == target_id),
-                None
-            )
-            return entry
+                entry = next(
+                    (row for row in data.get("data", []) if row.get("id") == target_id),
+                    None
+                )
+                return entry
+    except Exception:
+        logging.exception("Помилка при отриманні даних для country_id=%s target_id=%s", country_id, target_id)
+        return None
 
 async def main():
     result = await fetch_data()
@@ -34,4 +46,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
