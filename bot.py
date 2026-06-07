@@ -4,8 +4,7 @@ import logging
 from dotenv import load_dotenv
 
 from aiogram import Bot, Dispatcher, F
-from aiogram.filters import CommandStart, StateFilter
-from aiogram.fsm.state import default_state
+from aiogram.filters import CommandStart
 from aiogram.types import Message
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.state import StatesGroup, State
@@ -117,16 +116,18 @@ async def send_periodic_data(user_id: int, interval: int):
 
 
 
-@dp.message(CommandStart(), StateFilter(default_state))
-async def cmd_start(message: Message):
+@dp.message(CommandStart())
+async def cmd_start(message: Message, state: FSMContext):
+    await state.clear()
     user_id = message.from_user.id
     await add_user_if_not_exists_simple(user_id)
     await update_status_message(user_id, "🔴 Моніторинг зупинено")
     await message.answer("Бот запущено. Використовуйте кнопки для керування роботою бота", reply_markup=keyboard)
 
 
-@dp.message(F.text == "🟢 Почати перевірку", StateFilter(default_state))
-async def start_checking(message: Message):
+@dp.message(F.text == "🟢 Почати перевірку")
+async def start_checking(message: Message, state: FSMContext):
+    await state.clear()
     user_id = message.from_user.id
     if task_manager.is_active(user_id):
         await message.answer("Перевірка вже запущена")
@@ -147,8 +148,9 @@ async def start_checking(message: Message):
 
 
 
-@dp.message(F.text == "🔴 Зупинити перевірку", StateFilter(default_state))
-async def stop_checking(message: Message):
+@dp.message(F.text == "🔴 Зупинити перевірку")
+async def stop_checking(message: Message, state: FSMContext):
+    await state.clear()
     user_id = message.from_user.id
     if task_manager.is_active(user_id):
         task_manager.stop_tasks(user_id)
@@ -159,7 +161,7 @@ async def stop_checking(message: Message):
 
 
 # Вибір КПП
-@dp.message(F.text == "🟡 Вибрати час та КПП для перевірки", StateFilter(default_state))
+@dp.message(F.text == "🟡 Вибрати час та КПП для перевірки")
 async def set_kpp(message: Message, state: FSMContext):
     await message.answer("Введіть назву пропускного пункту", reply_markup=cancel_keyboard)
     await state.set_state(Cfg.waiting_kpp)
@@ -226,8 +228,9 @@ async def save_threshold(message: Message, state: FSMContext):
     await message.answer("✅ Поріг збережено.")
 
 
-@dp.message(F.text == "🔵 Показати дані про КПП", StateFilter(default_state))
-async def show_data(message : Message):
+@dp.message(F.text == "🔵 Показати дані про КПП")
+async def show_data(message: Message, state: FSMContext):
+    await state.clear()
     user_id = message.from_user.id
     kpps = await show_user_data(user_id)
     if not kpps:
@@ -244,8 +247,9 @@ async def show_data(message : Message):
     await send_long_message(user_id, text)
 
 
-@dp.message(F.text == "⚙️ Мої налаштування КПП", StateFilter(default_state))
-async def show_kpp_settings(message: Message):
+@dp.message(F.text == "⚙️ Мої налаштування КПП")
+async def show_kpp_settings(message: Message, state: FSMContext):
+    await state.clear()
     user_id = message.from_user.id
     kpps = await show_user_data(user_id)
     if not kpps:
