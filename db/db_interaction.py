@@ -32,7 +32,6 @@ async def add_user_if_not_exists(user_id: int, session: AsyncSession):
     if not user:
         user = User(id=user_id)
         session.add(user)
-        await session.commit()
     return user
 
 
