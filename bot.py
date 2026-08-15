@@ -99,7 +99,7 @@ async def send_periodic_data(user_id: int, interval: int):
                     text = (
                         "Знайдено:\n"
                         f"{title}\n"
-                        f"Черга {'не ' if not is_paused else ''}затримується\n"
+                        f"Черга {'не ' if is_paused else ''}обслуговується\n"
                         f"Час очікування: {calc_time(wait_time)}\n"
                         f"Черга авто: {vehicle_count}"
                     )
