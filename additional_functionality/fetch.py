@@ -4,14 +4,15 @@ import uuid
 import logging
 
 async def fetch_data(country_id: int = 167, target_id: int = 17) -> dict | None:
-    URL = "https://back.echerha.gov.ua/api/v4/workload/1?country_id={}"
+    URL = "https://back.echerha.gov.ua/api/v5/workload/1?country_id={}"
 
     HEADERS = {
         "accept": "application/json, text/plain, */*",
-        "x-client-locale": "uk",
-        "x-user-agent": "UABorder/3.2.2 Web/1.1.0 User/guest",
+        "X-Client-Locale": "uk",
+        "X-User-Agent": "UABorder/3.2.2 Web/1.1.0 User/guest",
         "origin": "https://echerha.gov.ua",
-        "x-request-id": str(uuid.uuid4()),
+        "referer": "https://echerha.gov.ua/workload/truck/1",
+        "X-Request-Id": str(uuid.uuid4()),
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     }
 

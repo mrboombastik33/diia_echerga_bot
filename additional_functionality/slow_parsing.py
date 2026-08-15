@@ -5,17 +5,17 @@ import logging
 async def find_data(kpp_name: str):
     HEADERS = {
         "accept": "application/json, text/plain, */*",
-        "x-client-locale": "uk",
-        "x-user-agent": "UABorder/3.2.2 Web/1.1.0 User/guest",
+        "X-Client-Locale": "uk",
+        "X-User-Agent": "UABorder/3.2.2 Web/1.1.0 User/guest",
         "origin": "https://echerha.gov.ua",
-        "x-request-id": str(uuid.uuid4()),
+        "X-Request-Id": str(uuid.uuid4()),
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     }
 
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                "https://back.echerha.gov.ua/api/v4/workload/1", headers=HEADERS, timeout=10
+                "https://back.echerha.gov.ua/api/v5/workload/1", headers=HEADERS, timeout=10
             ) as resp:
                 if resp.status != 200:
                     body = await resp.text()
