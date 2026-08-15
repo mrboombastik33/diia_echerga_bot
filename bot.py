@@ -1,6 +1,5 @@
 import asyncio
 import os
-import signal
 import logging
 from dotenv import load_dotenv
 
@@ -270,26 +269,7 @@ async def show_kpp_settings(message: Message, state: FSMContext):
 
 async def main():
     await init_db()
-
-    stop_event = asyncio.Event()
-
-    def _signal_handler(_):
-        logging.info("Отримано сигнал зупинки, завершуємо роботу...")
-        stop_event.set()
-
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        asyncio.get_event_loop().add_signal_handler(sig, _signal_handler)
-
-    polling_task = asyncio.create_task(dp.start_polling(bot))
-
-    await stop_event.wait()
-
-    polling_task.cancel()
-    try:
-        await polling_task
-    except asyncio.CancelledError:
-        pass
-
+    await dp.start_polling(bot)
     await bot.session.close()
     logging.info("Бот зупинено.")
 
