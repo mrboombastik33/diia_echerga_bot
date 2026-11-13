@@ -11,7 +11,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
-from additional_functionality.fetch import fetch_data, fetch_workload, close_session
+from additional_functionality.fetch import fetch_workload, get_entry, close_session
 from additional_functionality.additional import calc_time, parse_duration
 from keyboard_markup import keyboard, cancel_keyboard
 
@@ -26,7 +26,8 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 
-INTERVAL = 15
+INTERVAL = 30
+STALE_NOTE_AFTER = 60  # секунд; старші дані в кнопках позначаємо
 BLIND_AFTER = 180  # секунд без успішних запитів до попередження
 
 logging.basicConfig(level=logging.INFO)
@@ -47,6 +48,12 @@ async def send_long_message(user_id: int, text: str, reply_markup=None):
     for i, chunk in enumerate(chunks):
         markup = reply_markup if i == len(chunks) - 1 else None
         await bot.send_message(user_id, chunk, reply_markup=markup)
+
+
+def _age_note(age: float | None) -> str:
+    if age is not None and age > STALE_NOTE_AFTER:
+        return f" (дані {int(age)} с тому)"
+    return ""
 
 
 async def update_status_message(user_id: int, text: str):
@@ -277,12 +284,13 @@ async def show_data(message: Message, state: FSMContext):
         return
     text = "Ваші сессії:\n"
     for data in kpps:
-        kpp = await fetch_data(data["country_id"], data["id"])
+        kpp, age = await get_entry(data["country_id"], data["id"])
         if not kpp:
+            text += f"\nКПП {data['id']}: дані тимчасово недоступні\n"
             continue
         title = kpp.get("title", "Невідомо")
         wait_time = kpp.get("wait_time", 0)
-        text += f"\nНазва: {title} \nЧас очікування: {calc_time(wait_time)}\n"
+        text += f"\nНазва: {title} \nЧас очікування: {calc_time(wait_time)}{_age_note(age)}\n"
     await send_long_message(user_id, text, reply_markup=keyboard)
 
 
@@ -297,10 +305,8 @@ async def show_kpp_settings(message: Message, state: FSMContext):
 
     text = "Ваші налаштування:\n"
     for data in kpps:
-        kpp = await fetch_data(data["country_id"], data["id"])
-        if not kpp:
-            continue
-        title = kpp.get("title", "Невідомо")
+        kpp, _age = await get_entry(data["country_id"], data["id"])
+        title = kpp.get("title", "Невідомо") if kpp else f"КПП {data['id']}"
         text += f"\nНазва: {title}\nПоріг очікування: {calc_time(data['threshold'])}\n"
     await send_long_message(user_id, text, reply_markup=keyboard)
 
