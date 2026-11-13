@@ -239,3 +239,67 @@ async def test_cancel_stops_loop_cleanly(env):
     botmod.task_manager.stop_tasks(USER)
     await asyncio.sleep(0.05)
     assert not botmod.task_manager.is_active(USER)
+
+
+# ---- кнопки: дані з кешу, без блокувань ----
+
+class Msg:
+    def __init__(self):
+        self.from_user = type("U", (), {"id": USER})()
+        self.answers = []
+
+    async def answer(self, text, **kw):
+        self.answers.append(text)
+
+
+class FakeState:
+    async def clear(self):
+        pass
+
+
+@pytest.fixture
+def buttons(env, monkeypatch):
+    async def show_user_data(user_id):
+        return [{"id": 1, "country_id": 10, "threshold": 3600}, {"id": 2, "country_id": 10, "threshold": 600}]
+    monkeypatch.setattr(botmod, "show_user_data", show_user_data)
+    return env
+
+
+async def test_show_data_uses_get_entry_and_marks_stale(buttons, monkeypatch):
+    async def get_entry(country_id, kpp_id):
+        return (KPP_A, 200.0) if kpp_id == 1 else (None, None)
+    monkeypatch.setattr(botmod, "get_entry", get_entry)
+
+    await botmod.show_data(Msg(), FakeState())
+
+    text = buttons.sent[-1][1]
+    assert "Ягодин" in text and "(дані 200 с тому)" in text
+    assert "КПП 2: дані тимчасово недоступні" in text   # не зникає мовчки
+
+
+async def test_show_data_fresh_has_no_stale_note(buttons, monkeypatch):
+    async def get_entry(country_id, kpp_id):
+        return KPP_A, 5.0
+    monkeypatch.setattr(botmod, "get_entry", get_entry)
+    await botmod.show_data(Msg(), FakeState())
+    assert "с тому" not in buttons.sent[-1][1]
+
+
+async def test_settings_show_thresholds_even_if_api_down(buttons, monkeypatch):
+    async def get_entry(country_id, kpp_id):
+        return None, None
+    monkeypatch.setattr(botmod, "get_entry", get_entry)
+
+    await botmod.show_kpp_settings(Msg(), FakeState())
+
+    text = buttons.sent[-1][1]
+    assert "Поріг очікування: 1 годин" in text and "КПП 1" in text and "КПП 2" in text
+
+
+async def test_buttons_do_not_call_fetch_workload(buttons, monkeypatch):
+    async def get_entry(country_id, kpp_id):
+        return KPP_A, 1.0
+    monkeypatch.setattr(botmod, "get_entry", get_entry)
+    await botmod.show_data(Msg(), FakeState())
+    await botmod.show_kpp_settings(Msg(), FakeState())
+    assert buttons.fetch_calls == []
