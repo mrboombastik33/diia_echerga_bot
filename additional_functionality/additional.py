@@ -55,3 +55,32 @@ def parse_duration(text: str) -> int:
 
     return days * 86_400 + hours * 3_600 + minutes * 60
 
+
+
+_TIMING_UNITS = {"дн": 86_400, "год": 3_600, "хв": 60}
+_TIMING_RE = re.compile(r"(\d+)\s*(дн|год|хв)")
+
+
+def parse_timing_text(text) -> int | None:
+    """"7 дн 2 год" / "2 год 24 хв" / "18 хв" / "0 хв" -> секунди; None, якщо формат невідомий."""
+    if not isinstance(text, str):
+        return None
+    parts = _TIMING_RE.findall(text)
+    if not parts:
+        return None
+    return sum(int(n) * _TIMING_UNITS[unit] for n, unit in parts)
+
+
+def get_wait_seconds(entry: dict) -> int | None:
+    """Час очікування КПП в секундах.
+
+    API v5 більше не віддає числове `wait_time`, лише текст `timing.header.text`.
+    Числове поле, якщо воно колись повернеться, має пріоритет.
+    """
+    wait_time = entry.get("wait_time")
+    if isinstance(wait_time, (int, float)) and not isinstance(wait_time, bool):
+        return int(wait_time)
+    timing = entry.get("timing")
+    header = timing.get("header") if isinstance(timing, dict) else None
+    text = header.get("text") if isinstance(header, dict) else None
+    return parse_timing_text(text)
