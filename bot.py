@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 import logging
 from dotenv import load_dotenv
 
@@ -10,7 +11,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
-from additional_functionality.fetch import fetch_data
+from additional_functionality.fetch import fetch_data, fetch_workload, close_session
 from additional_functionality.additional import calc_time, parse_duration
 from keyboard_markup import keyboard, cancel_keyboard
 
@@ -25,13 +26,15 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 
-INTERVAL = 30
+INTERVAL = 15
+BLIND_AFTER = 180  # секунд без успішних запитів до попередження
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
 
 task_manager = TaskManager()
+active_alerts: set[tuple[int, int]] = set()
 
 class Cfg(StatesGroup):
     waiting_kpp = State()
@@ -64,7 +67,25 @@ async def update_status_message(user_id: int, text: str):
         logging.warning("Не вдалося закріпити повідомлення для %s: %s", user_id, e)
 
 
+async def _send_alert_burst(user_id: int, text: str):
+    for _ in range(5):
+        await send_long_message(user_id, text)
+        await asyncio.sleep(5)
+
+
+def _start_alert_burst(user_id: int, kpp_id: int, text: str):
+    key = (user_id, kpp_id)
+    if key in active_alerts:
+        return
+    active_alerts.add(key)
+    task = task_manager.start_task(user_id, _send_alert_burst(user_id, text))
+    task.add_done_callback(lambda _t: active_alerts.discard(key))
+
+
 async def send_periodic_data(user_id: int, interval: int):
+    last_success = time.monotonic()
+    blind_notified = False
+
     while True:
         try:
             thresholds = await get_user_thresholds_database(user_id)
@@ -75,37 +96,54 @@ async def send_periodic_data(user_id: int, interval: int):
                 await asyncio.sleep(interval)
                 continue
 
+            by_country: dict[int, list[dict]] = {}
             for threshold_data in thresholds:
-                kpp_id = threshold_data["kpp_id"]
-                country_id = threshold_data["country_id"]
-                threshold = threshold_data["threshold"]
+                by_country.setdefault(threshold_data["country_id"], []).append(threshold_data)
 
-                await asyncio.sleep(1)
-
-                entry = await fetch_data(country_id=country_id, target_id=kpp_id)
-
-                if not entry:
+            any_ok = False
+            for country_id, items in by_country.items():
+                rows = await fetch_workload(country_id)
+                if rows is None:
                     continue
+                any_ok = True
+                by_id = {row.get("id"): row for row in rows}
 
-                wait_time = entry.get("wait_time")
-                if wait_time is None:
-                    continue
+                for threshold_data in items:
+                    kpp_id = threshold_data["kpp_id"]
+                    threshold = threshold_data["threshold"]
 
-                if threshold is not None and wait_time > threshold:
-                    title = entry.get("title", "Невідомо")
-                    is_paused = entry.get("is_paused", False)
-                    vehicle_count = entry.get("vehicle_in_active_queues_counts", "н/д")
-                    text = (
-                        "Знайдено:\n"
-                        f"{title}\n"
-                        f"Черга {'не ' if is_paused else ''}обслуговується\n"
-                        f"Час очікування: {calc_time(wait_time)}\n"
-                        f"Черга авто: {vehicle_count}"
-                    )
-                    for i in range(5):
-                        await send_long_message(user_id, text)
-                        await asyncio.sleep(5)
+                    entry = by_id.get(kpp_id)
+                    if not entry:
+                        continue
 
+                    wait_time = entry.get("wait_time")
+                    if wait_time is None:
+                        continue
+
+                    if threshold is not None and wait_time > threshold:
+                        title = entry.get("title", "Невідомо")
+                        is_paused = entry.get("is_paused", False)
+                        vehicle_count = entry.get("vehicle_in_active_queues_counts", "н/д")
+                        text = (
+                            "Знайдено:\n"
+                            f"{title}\n"
+                            f"Черга {'не ' if is_paused else ''}обслуговується\n"
+                            f"Час очікування: {calc_time(wait_time)}\n"
+                            f"Черга авто: {vehicle_count}"
+                        )
+                        _start_alert_burst(user_id, kpp_id, text)
+
+            now = time.monotonic()
+            if any_ok:
+                last_success = now
+                if blind_notified:
+                    blind_notified = False
+                    await bot.send_message(user_id, "✅ Дані від єЧерги відновлено.")
+            elif not blind_notified and now - last_success > BLIND_AFTER:
+                blind_notified = True
+                await bot.send_message(
+                    user_id, "⚠️ Дані від єЧерги недоступні, моніторинг тимчасово не працює."
+                )
 
             await asyncio.sleep(interval)
 
@@ -269,7 +307,10 @@ async def show_kpp_settings(message: Message, state: FSMContext):
 
 async def main():
     await init_db()
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    finally:
+        await close_session()
     await bot.session.close()
     logging.info("Бот зупинено.")
 
