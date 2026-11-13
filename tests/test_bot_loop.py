@@ -303,3 +303,70 @@ async def test_buttons_do_not_call_fetch_workload(buttons, monkeypatch):
     await botmod.show_data(Msg(), FakeState())
     await botmod.show_kpp_settings(Msg(), FakeState())
     assert buttons.fetch_calls == []
+
+
+# ---- реальний формат API v5: немає wait_time, лише timing.header.text ----
+
+def api_row(kpp_id, text, **extra):
+    return {"id": kpp_id, "country_id": 10, "title": f"КПП {kpp_id}", "is_paused": True,
+            "vehicle_in_active_queues_counts": 871,
+            "timing": {"header": {"text": text, "label": "Час очікування"}, "additional": None, "notice": None},
+            **extra}
+
+
+async def test_alert_fires_for_real_api_shape_without_wait_time(env):
+    """Регресія: API перестав віддавати wait_time, і бот мовчки не слав алертів."""
+    env.thresholds = [th(14, 3600)]
+    env.rows_by_country = {10: [api_row(14, "7 дн 2 год")]}
+    start()
+
+    assert await wait_for(lambda: len(env.sent) >= 5)
+    assert "7 днів 2 годин" in env.sent[0][1]
+
+
+async def test_no_alert_when_timing_text_below_threshold(env):
+    env.thresholds = [th(14, 3600)]
+    env.rows_by_country = {10: [api_row(14, "18 хв")]}
+    start()
+    assert await wait_for(lambda: len(env.fetch_calls) >= 3)
+    assert env.sent == []
+
+
+async def test_unparseable_timing_triggers_blind_warning(env, monkeypatch, caplog):
+    """Формат змінився → не мовчимо: лог + попередження користувачу."""
+    monkeypatch.setattr(botmod, "BLIND_AFTER", 0.05)
+    env.thresholds = [th(14, 0)]
+    env.rows_by_country = {10: [api_row(14, "щось нове")]}
+    start(interval=0.01)
+
+    assert await wait_for(lambda: any("⚠️" in t for _, t in env.bot_msgs))
+    assert "не вдалося визначити час очікування" in caplog.text
+    assert env.sent == []
+
+
+async def test_alert_and_cycle_are_logged(env, caplog):
+    import logging
+    caplog.set_level(logging.INFO)
+    env.thresholds = [th(14, 3600)]
+    env.rows_by_country = {10: [api_row(14, "7 дн 2 год")]}
+    start()
+    assert await wait_for(lambda: env.sent)
+    assert "Алерт для юзера" in caplog.text
+    assert "Результат перевірки" in caplog.text and "14=" in caplog.text
+
+
+async def test_show_data_with_real_api_shape(buttons, monkeypatch):
+    async def get_entry(country_id, kpp_id):
+        return api_row(kpp_id, "7 дн 2 год"), 1.0
+    monkeypatch.setattr(botmod, "get_entry", get_entry)
+    await botmod.show_data(Msg(), FakeState())
+    text = buttons.sent[-1][1]
+    assert "7 днів 2 годин" in text and "0 хвилин" not in text
+
+
+async def test_show_data_unparseable_shows_na_not_zero(buttons, monkeypatch):
+    async def get_entry(country_id, kpp_id):
+        return api_row(kpp_id, "???"), 1.0
+    monkeypatch.setattr(botmod, "get_entry", get_entry)
+    await botmod.show_data(Msg(), FakeState())
+    assert "Час очікування: н/д" in buttons.sent[-1][1]

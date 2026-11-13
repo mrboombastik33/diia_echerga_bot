@@ -12,7 +12,7 @@ from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
 from additional_functionality.fetch import fetch_workload, get_entry, close_session
-from additional_functionality.additional import calc_time, parse_duration
+from additional_functionality.additional import calc_time, parse_duration, get_wait_seconds
 from keyboard_markup import keyboard, cancel_keyboard
 
 from db.db_interaction import (init_db, get_user_thresholds_database, set_user_threshold_database,
@@ -80,13 +80,14 @@ async def _send_alert_burst(user_id: int, text: str):
         await asyncio.sleep(5)
 
 
-def _start_alert_burst(user_id: int, kpp_id: int, text: str):
+def _start_alert_burst(user_id: int, kpp_id: int, text: str) -> bool:
     key = (user_id, kpp_id)
     if key in active_alerts:
-        return
+        return False
     active_alerts.add(key)
     task = task_manager.start_task(user_id, _send_alert_burst(user_id, text))
     task.add_done_callback(lambda _t: active_alerts.discard(key))
+    return True
 
 
 async def send_periodic_data(user_id: int, interval: int):
@@ -107,12 +108,12 @@ async def send_periodic_data(user_id: int, interval: int):
             for threshold_data in thresholds:
                 by_country.setdefault(threshold_data["country_id"], []).append(threshold_data)
 
-            any_ok = False
+            any_ok = False   # чи отримали хоч одне придатне значення часу очікування
+            seen: list[str] = []
             for country_id, items in by_country.items():
                 rows = await fetch_workload(country_id)
                 if rows is None:
                     continue
-                any_ok = True
                 by_id = {row.get("id"): row for row in rows}
 
                 for threshold_data in items:
@@ -121,11 +122,16 @@ async def send_periodic_data(user_id: int, interval: int):
 
                     entry = by_id.get(kpp_id)
                     if not entry:
+                        logging.warning("КПП %s відсутній у відповіді API (country_id=%s)", kpp_id, country_id)
                         continue
 
-                    wait_time = entry.get("wait_time")
+                    wait_time = get_wait_seconds(entry)
                     if wait_time is None:
+                        logging.warning("КПП %s: не вдалося визначити час очікування (timing=%r)",
+                                        kpp_id, entry.get("timing"))
                         continue
+                    any_ok = True
+                    seen.append(f"{kpp_id}={calc_time(wait_time)} (поріг {calc_time(threshold) if threshold is not None else 'н/д'})")
 
                     if threshold is not None and wait_time > threshold:
                         title = entry.get("title", "Невідомо")
@@ -138,7 +144,11 @@ async def send_periodic_data(user_id: int, interval: int):
                             f"Час очікування: {calc_time(wait_time)}\n"
                             f"Черга авто: {vehicle_count}"
                         )
-                        _start_alert_burst(user_id, kpp_id, text)
+                        if _start_alert_burst(user_id, kpp_id, text):
+                            logging.info("Алерт для юзера %s: КПП %s, очікування %s > поріг %s",
+                                         user_id, kpp_id, calc_time(wait_time), calc_time(threshold))
+
+            logging.info("Результат перевірки юзера %s: %s", user_id, "; ".join(seen) or "немає даних")
 
             now = time.monotonic()
             if any_ok:
@@ -289,8 +299,9 @@ async def show_data(message: Message, state: FSMContext):
             text += f"\nКПП {data['id']}: дані тимчасово недоступні\n"
             continue
         title = kpp.get("title", "Невідомо")
-        wait_time = kpp.get("wait_time", 0)
-        text += f"\nНазва: {title} \nЧас очікування: {calc_time(wait_time)}{_age_note(age)}\n"
+        wait_time = get_wait_seconds(kpp)
+        wait_text = calc_time(wait_time) if wait_time is not None else "н/д"
+        text += f"\nНазва: {title} \nЧас очікування: {wait_text}{_age_note(age)}\n"
     await send_long_message(user_id, text, reply_markup=keyboard)
 
 
